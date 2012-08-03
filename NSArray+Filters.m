@@ -52,10 +52,13 @@ static NSString *const SPNoMemoryExceptionReason = @"Unable to allocate objects 
   [self getObjects:objects range:range];
 
   for (index = 0; index < self_len; ++index)
-    if ( ! (objects[index] = block(objects[index])))
+    if ( ! (objects[index] = block(objects[index]))) {
+      free(objects);
       @throw [NSException exceptionWithName:SPNilObjectMappingException
                                      reason:SPNilObjectMappingExceptionReason
                                    userInfo:nil];
+      return nil;
+    }
 
   result = [NSArray arrayWithObjects:objects count:self_len];
 
@@ -179,6 +182,8 @@ static NSString *const SPNoMemoryExceptionReason = @"Unable to allocate objects 
   for (; index < self_len; ++index)
     memo = block(memo, objects[index]);
 
+  free(objects);
+
   return memo;
 }
 
@@ -213,10 +218,13 @@ static NSString *const SPNoMemoryExceptionReason = @"Unable to allocate objects 
   [self getObjects:objects range:range];
 
   for (index = 0; index < self_len; ++index)
-    if ( ! (objects[index] = block(objects[index])))
+    if ( ! (objects[index] = block(objects[index]))) {
+      free(objects);
       @throw [NSException exceptionWithName:SPNilObjectMappingException
                                      reason:SPNilObjectMappingExceptionReason
                                    userInfo:nil];
+      return;
+    }
 
   for (index = 0; index < self_len; ++index)
     [self replaceObjectAtIndex:index withObject:objects[index]];
