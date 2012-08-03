@@ -1,0 +1,9 @@
+This is a collection of source code that I rather like using in Objective-C.
+
+It's all licensed under the MIT license. This has not been rigorously tested
+nor is it guaranteed to be performant in any way. It's simply meant to be a
+useful collection of things.
+
+All source code requires the use of automatic reference counting (-fobjc-arc).
+
+See COPYING or the header of any source file for license details.
