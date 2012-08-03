@@ -22,7 +22,7 @@ SOFTWARE.
 
 #import "NSURL+DirectoryUtils.h"
 
-@implementation NSURL (DirectoryUtils)
+@implementation NSURL (SPDirectoryUtils)
 
 - (NSURL *)URLByAscendingURL
 {

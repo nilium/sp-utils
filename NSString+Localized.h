@@ -22,7 +22,7 @@ SOFTWARE.
 
 #import <Foundation/Foundation.h>
 
-@interface NSString (Localized)
+@interface NSString (SPLocalized)
 
 - (NSString *)localizedString;
 

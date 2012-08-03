@@ -22,7 +22,7 @@ SOFTWARE.
 
 #import "NSString+Localized.h"
 
-@implementation NSString (Localized)
+@implementation NSString (SPLocalized)
 
 - (NSString *)localizedString
 {

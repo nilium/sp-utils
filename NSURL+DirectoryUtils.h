@@ -22,7 +22,7 @@ SOFTWARE.
 
 #import <Foundation/Foundation.h>
 
-@interface NSURL (DirectoryUtils)
+@interface NSURL (SPDirectoryUtils)
 
 /*! Returns the URL above the current URL. Functions similar to
     URLByDeletingLastPathComponent, albeit that it will return nil if it can no
