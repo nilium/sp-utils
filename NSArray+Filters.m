@@ -27,6 +27,90 @@ static NSString *const SPNilObjectMappingExceptionReason = @"Objects returned by
 static NSString *const SPNoMemoryException = @"SPNoMemoryException";
 static NSString *const SPNoMemoryExceptionReason = @"Unable to allocate objects array.";
 
+// Mutates the given mutable array, removing blocks that match checkFor (TRUE or FALSE)
+static void SPFilterArrayUsingBlock(NSMutableArray *arr, SPFilterBlock block, BOOL checkFor);
+// Returns a new array filtered by removing blocks that match checkFor (TRUE or FALSE)
+static NSArray *SPArrayFilteredUsingBlock(NSArray *arr, SPFilterBlock block, BOOL checkFor);
+
+
+static NSArray *SPArrayFilteredUsingBlock(NSArray *arr, SPFilterBlock block, BOOL checkFor)
+{
+  NSArray *result = nil;
+  __unsafe_unretained id *objects = NULL;
+  NSUInteger index_filtered = 0;
+  NSUInteger index = 0;
+  const NSUInteger self_len = [arr count];
+  const NSRange range = NSMakeRange(0, self_len);
+
+  if (self_len == 0)
+    return [arr copy];
+
+  objects = (__unsafe_unretained id *)malloc(sizeof(id) * self_len);
+
+  if (objects == NULL) {
+    @throw [NSException exceptionWithName:SPNoMemoryException
+                                   reason:SPNoMemoryExceptionReason
+                                 userInfo:nil];
+    return nil;
+  }
+
+  [arr getObjects:objects range:range];
+
+  for (index = 0, index_filtered = 0; index < self_len; ++index) {
+    BOOL filter = block(objects[index]);
+
+    if (filter == checkFor) {
+      objects[index] = NULL;
+    } else {
+      if (index != index_filtered)
+        objects[index_filtered] = objects[index];
+
+      ++index_filtered;
+    }
+  }
+
+  result = [[arr class] arrayWithObjects:objects count:index_filtered];
+
+  free(objects);
+
+  return result;
+}
+
+
+static void SPFilterArrayUsingBlock(NSMutableArray *arr, SPFilterBlock block, BOOL checkFor)
+{
+  __unsafe_unretained id *objects = NULL;
+  NSUInteger index = 0;
+  NSMutableIndexSet *indices = nil;
+  const NSUInteger self_len = [arr count];
+  const NSRange range = NSMakeRange(0, self_len);
+
+  if (self_len == 0)
+    return;
+
+  objects = (__unsafe_unretained id *)malloc(sizeof(id) * self_len);
+
+  if (objects == NULL) {
+    @throw [NSException exceptionWithName:SPNoMemoryException
+                                   reason:SPNoMemoryExceptionReason
+                                 userInfo:nil];
+    return;
+  }
+
+  indices = [NSMutableIndexSet indexSet];
+  [arr getObjects:objects range:range];
+
+  for (index = 0; index < self_len; ++index)
+    if (block(objects[index]) == checkFor)
+      [indices addIndex:index];
+
+  [arr removeObjectsAtIndexes:indices];
+
+  free(objects);
+}
+
+
+
 @implementation NSArray (SPImmutableFilters)
 
 - (NSArray *)mappedArrayUsingBlock:(SPMapBlock)block
@@ -60,7 +144,7 @@ static NSString *const SPNoMemoryExceptionReason = @"Unable to allocate objects 
       return nil;
     }
 
-  result = [NSArray arrayWithObjects:objects count:self_len];
+  result = [[self class] arrayWithObjects:objects count:self_len];
 
   free(objects);
 
@@ -69,88 +153,12 @@ static NSString *const SPNoMemoryExceptionReason = @"Unable to allocate objects 
 
 - (NSArray *)rejectedArrayUsingBlock:(SPFilterBlock)block
 {
-  NSArray *result = nil;
-  __unsafe_unretained id *objects = NULL;
-  NSUInteger index_filtered = 0;
-  NSUInteger index = 0;
-  const NSUInteger self_len = [self count];
-  const NSRange range = NSMakeRange(0, self_len);
-
-  if (self_len == 0)
-    return [self copy];
-
-  objects = (__unsafe_unretained id *)malloc(sizeof(id) * self_len);
-
-  if (objects == NULL) {
-    @throw [NSException exceptionWithName:SPNoMemoryException
-                                   reason:SPNoMemoryExceptionReason
-                                 userInfo:nil];
-    return nil;
-  }
-
-  [self getObjects:objects range:range];
-
-  for (index = 0, index_filtered = 0; index < self_len; ++index) {
-    BOOL filter = block(objects[index]);
-
-    if (filter) {
-      objects[index] = NULL;
-    } else {
-      if (index != index_filtered)
-        objects[index_filtered] = objects[index];
-
-      ++index_filtered;
-    }
-  }
-
-  result = [NSArray arrayWithObjects:objects count:index_filtered];
-
-  free(objects);
-
-  return result;
+  return SPArrayFilteredUsingBlock(self, block, TRUE);
 }
 
 - (NSArray *)selectedArrayUsingBlock:(SPFilterBlock)block
 {
-  NSArray *result = nil;
-  __unsafe_unretained id *objects = NULL;
-  NSUInteger index_filtered = 0;
-  NSUInteger index = 0;
-  const NSUInteger self_len = [self count];
-  const NSRange range = NSMakeRange(0, self_len);
-
-  if (self_len == 0)
-    return [self copy];
-
-  objects = (__unsafe_unretained id *)malloc(sizeof(id) * self_len);
-
-  if (objects == NULL) {
-    @throw [NSException exceptionWithName:SPNoMemoryException
-                                   reason:SPNoMemoryExceptionReason
-                                 userInfo:nil];
-    return nil;
-  }
-
-  [self getObjects:objects range:range];
-
-  for (index = 0, index_filtered = 0; index < self_len; ++index) {
-    BOOL filter = block(objects[index]);
-
-    if (!filter) {
-      objects[index] = NULL;
-    } else {
-      if (index != index_filtered)
-        objects[index_filtered] = objects[index];
-
-      ++index_filtered;
-    }
-  }
-
-  result = [NSArray arrayWithObjects:objects count:index_filtered];
-
-  free(objects);
-
-  return result;
+  return SPArrayFilteredUsingBlock(self, block, FALSE);
 }
 
 - (id)reduceWithInitialValue:(id)memo usingBlock:(SPReduceBlock)block
@@ -234,66 +242,12 @@ static NSString *const SPNoMemoryExceptionReason = @"Unable to allocate objects 
 
 - (void)rejectUsingBlock:(SPFilterBlock)block
 {
-  __unsafe_unretained id *objects = NULL;
-  NSUInteger index = 0;
-  NSMutableIndexSet *indices = nil;
-  const NSUInteger self_len = [self count];
-  const NSRange range = NSMakeRange(0, self_len);
-
-  if (self_len == 0)
-    return;
-
-  objects = (__unsafe_unretained id *)malloc(sizeof(id) * self_len);
-
-  if (objects == NULL) {
-    @throw [NSException exceptionWithName:SPNoMemoryException
-                                   reason:SPNoMemoryExceptionReason
-                                 userInfo:nil];
-    return;
-  }
-
-  indices = [NSMutableIndexSet indexSet];
-  [self getObjects:objects range:range];
-
-  for (index = 0; index < self_len; ++index)
-    if (block(objects[index]))
-      [indices addIndex:index];
-
-  [self removeObjectsAtIndexes:indices];
-
-  free(objects);
+  SPFilterArrayUsingBlock(self, block, TRUE);
 }
 
 - (void)selectUsingBlock:(SPFilterBlock)block
 {
-  __unsafe_unretained id *objects = NULL;
-  NSUInteger index = 0;
-  NSMutableIndexSet *indices = nil;
-  const NSUInteger self_len = [self count];
-  const NSRange range = NSMakeRange(0, self_len);
-
-  if (self_len == 0)
-    return;
-
-  objects = (__unsafe_unretained id *)malloc(sizeof(id) * self_len);
-
-  if (objects == NULL) {
-    @throw [NSException exceptionWithName:SPNoMemoryException
-                                   reason:SPNoMemoryExceptionReason
-                                 userInfo:nil];
-    return;
-  }
-
-  indices = [NSMutableIndexSet indexSet];
-  [self getObjects:objects range:range];
-
-  for (index = 0; index < self_len; ++index)
-    if ( ! block(objects[index]))
-      [indices addIndex:index];
-
-  [self removeObjectsAtIndexes:indices];
-
-  free(objects);
+  SPFilterArrayUsingBlock(self, block, FALSE);
 }
 
 @end
