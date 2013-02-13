@@ -22,6 +22,9 @@ SOFTWARE.
 
 #import "NSFilters.h"
 
+// An arbitrarily chosen stride - change to suit your needs.
+const NSUInteger NSFiltersDefaultStride = 256;
+
 typedef __unsafe_unretained id unsafe_id;
 typedef void (^s_complete_block_t)(const unsafe_id* objects, size_t num_objects);
 
@@ -31,11 +34,15 @@ static NSString *const SPNoMemoryException = @"SPNoMemoryException";
 static NSString *const SPNoMemoryExceptionReason = @"Unable to allocate objects array.";
 
 // Mutates the given mutable array, removing blocks that match checkFor (TRUE or FALSE)
-static void SPFilterArrayUsingBlock(NSMutableArray *arr, SPFilterBlock block, BOOL checkFor, dispatch_queue_t queue);
+static void SPFilterArrayUsingBlock(NSMutableArray *arr, SPFilterBlock block, BOOL checkFor, NSUInteger stride, dispatch_queue_t queue);
 // Returns a new array filtered by removing blocks that match checkFor (TRUE or FALSE)
-static NSArray *SPArrayFilteredUsingBlock(NSArray *arr, SPFilterBlock block, BOOL checkFor, dispatch_queue_t queue);
+static NSArray *SPArrayFilteredUsingBlock(NSArray *arr, SPFilterBlock block, BOOL checkFor, NSUInteger stride, dispatch_queue_t queue);
+// Transforms all objects in the array with the given block and then passes an id array of the objects to the completion block.
+static void SPMapArrayUsingBlock(NSArray *array, SPMapBlock block, NSUInteger stride, dispatch_queue_t queue, s_complete_block_t completion);
+// Similar to SPMapArrayUsingBlock, except passes an id array of the objects passing the test to the completion block.
+static void SPFilterSetUsingBlock(NSSet *set, SPFilterBlock block, BOOL checkFor, dispatch_queue_t queue, s_complete_block_t completion);
 
-static NSArray *SPArrayFilteredUsingBlock(NSArray *arr, SPFilterBlock block, BOOL checkFor, dispatch_queue_t queue)
+static NSArray *SPArrayFilteredUsingBlock(NSArray *arr, SPFilterBlock block, BOOL checkFor, NSUInteger stride, dispatch_queue_t queue)
 {
   dispatch_group_t write_group;
   NSArray *result = nil;
@@ -59,25 +66,33 @@ static NSArray *SPArrayFilteredUsingBlock(NSArray *arr, SPFilterBlock block, BOO
 
   [arr getObjects:objects range:range];
 
-  block = [block copy];
-
   if (queue) {
+    size_t iterations = (size_t)(array_len / stride);
+    if (array_len % stride)
+      ++iterations;
     write_group = dispatch_group_create();
-    dispatch_apply((size_t)array_len, queue, ^(size_t index) {
-      id object = objects[index];
-      BOOL filter = (block(object) == checkFor);
+    dispatch_apply(iterations, queue, ^(size_t start) {
+      NSUInteger index = start * stride;
+      NSUInteger term = index + stride;
+      if (term > array_len)
+        term = array_len;
 
-      if (filter) {
-        objects[index] = NULL;
-      } else {
-        dispatch_group_enter(write_group);
-        dispatch_barrier_async(queue, ^{
-          if (index != index_filtered)
-            objects[index_filtered] = object;
+      for (; index < term; ++index) {
+        id object = objects[index];
+        BOOL filter = (block(object) == checkFor);
 
-          ++index_filtered;
-          dispatch_group_leave(write_group);
-        });
+        if (filter) {
+          objects[index] = NULL;
+        } else {
+          dispatch_group_enter(write_group);
+          dispatch_barrier_async(queue, ^{
+            if (index != index_filtered)
+              objects[index_filtered] = object;
+
+            ++index_filtered;
+            dispatch_group_leave(write_group);
+          });
+        }
       }
     });
     dispatch_group_wait(write_group, DISPATCH_TIME_FOREVER);
@@ -104,7 +119,7 @@ static NSArray *SPArrayFilteredUsingBlock(NSArray *arr, SPFilterBlock block, BOO
 }
 
 
-static void SPFilterArrayUsingBlock(NSMutableArray *arr, SPFilterBlock block, BOOL checkFor, dispatch_queue_t queue)
+static void SPFilterArrayUsingBlock(NSMutableArray *arr, SPFilterBlock block, BOOL checkFor, NSUInteger stride, dispatch_queue_t queue)
 {
   dispatch_group_t write_group;
   unsafe_id *objects = NULL;
@@ -128,18 +143,26 @@ static void SPFilterArrayUsingBlock(NSMutableArray *arr, SPFilterBlock block, BO
   indices = [NSMutableIndexSet indexSet];
   [arr getObjects:objects range:range];
 
-  block = [block copy];
-
   if (queue) {
+    size_t iterations = (size_t)(array_len / stride);
+    if (array_len % stride)
+      ++iterations;
     write_group = dispatch_group_create();
-    dispatch_apply((size_t)array_len, queue, ^(size_t index) {
-      if (block(objects[index]) == checkFor) {
-        const NSUInteger index_for_set = (NSUInteger)index - 1;
-        dispatch_group_enter(write_group);
-        dispatch_barrier_async(queue, ^{
-          [indices addIndex:index_for_set];
-          dispatch_group_leave(write_group);
-        });
+    dispatch_apply(iterations, queue, ^(size_t start) {
+      NSUInteger index = start * stride;
+      NSUInteger term = index + stride;
+      if (term > array_len)
+        term = array_len;
+
+      for (; index < term; ++index) {
+        if (block(objects[index]) == checkFor) {
+          const NSUInteger index_for_set = (NSUInteger)index - 1;
+          dispatch_group_enter(write_group);
+          dispatch_barrier_async(queue, ^{
+            [indices addIndex:index_for_set];
+            dispatch_group_leave(write_group);
+          });
+        }
       }
     });
     dispatch_group_wait(write_group, DISPATCH_TIME_FOREVER);
@@ -164,9 +187,6 @@ static void SPFilterSetUsingBlock(NSSet *set, SPFilterBlock block, BOOL checkFor
   __block NSUInteger matched_count = 0;
   const NSUInteger set_len = [set count];
 
-  if (completion)
-    completion = [completion copy];
-
   if (set_len == 0) {
     if (completion != nil)
       completion(NULL, 0);
@@ -182,8 +202,6 @@ static void SPFilterSetUsingBlock(NSSet *set, SPFilterBlock block, BOOL checkFor
                                  userInfo:nil];
     return;
   }
-
-  block = [block copy];
 
   if (queue) {
     group = dispatch_group_create();
@@ -216,16 +234,13 @@ static void SPFilterSetUsingBlock(NSSet *set, SPFilterBlock block, BOOL checkFor
 }
 
 
-static void SPMapArrayUsingBlock(NSArray *array, SPMapBlock block, dispatch_queue_t queue, s_complete_block_t completion)
+static void SPMapArrayUsingBlock(NSArray *array, SPMapBlock block, NSUInteger stride, dispatch_queue_t queue, s_complete_block_t completion)
 {
   __block id exception = nil;
   unsafe_id *objects = NULL;
   NSUInteger index = 0;
   const NSUInteger array_len = [array count];
   const NSRange range = NSMakeRange(0, array_len);
-
-  if (completion)
-    completion = [completion copy];
 
   if (array_len == 0) {
     if (completion != nil)
@@ -243,19 +258,27 @@ static void SPMapArrayUsingBlock(NSArray *array, SPMapBlock block, dispatch_queu
     return;
   }
 
-  block = [block copy];
-
   [array getObjects:objects range:range];
 
   if (queue) {
-    dispatch_apply((size_t)array_len, queue, ^(size_t index) {
-      id mapped = block(objects[index]);
-      if (mapped == nil) {
-        objects[index] = nil;
-        exception = [NSException exceptionWithName:SPNilObjectMappingException
-                     reason:SPNilObjectMappingExceptionReason userInfo:nil];
-      } else {
-        objects[index] = (__bridge id)CFRetain((__bridge CFTypeRef)mapped);
+    size_t iterations = (size_t)(array_len / stride);
+    if (array_len % stride)
+      ++iterations;
+    dispatch_apply(iterations, queue, ^(size_t start) {
+      NSUInteger index = start * stride;
+      NSUInteger term = index + stride;
+      if (term > array_len)
+        term = array_len;
+
+      for (; index < term; ++index) {
+        id mapped = block(objects[index]);
+        if (mapped == nil) {
+          objects[index] = nil;
+          exception = [NSException exceptionWithName:SPNilObjectMappingException
+                       reason:SPNilObjectMappingExceptionReason userInfo:nil];
+        } else {
+          objects[index] = (__bridge id)CFRetain((__bridge CFTypeRef)mapped);
+        }
       }
     });
   } else {
@@ -294,9 +317,6 @@ static void SPMapSetUsingBlock(NSSet *set, SPMapBlock block, dispatch_queue_t qu
   NSUInteger index = 0;
   objects = (unsafe_id *)calloc(num_objects, sizeof(id));
 
-  if (completion)
-    completion = [completion copy];
-
   if (num_objects == 0) {
     if (completion)
       completion(NULL, 0);
@@ -309,8 +329,6 @@ static void SPMapSetUsingBlock(NSSet *set, SPMapBlock block, dispatch_queue_t qu
             reason:SPNoMemoryExceptionReason userInfo:nil];
     return;
   }
-
-  block = [block copy];
 
   if (queue) {
     group = dispatch_group_create();
@@ -360,19 +378,24 @@ sp_set_map_cleanup:
 
 - (NSArray *)mappedArrayUsingBlock:(SPMapBlock)block
 {
-  return [self mappedArrayUsingBlock:block queue:nil];
+  return [self mappedArrayUsingBlock:block queue:nil stride:NSFiltersDefaultStride];
 }
 
 - (NSArray *)mappedArrayUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue
 {
-  __block NSArray *result = nil;
-  Class self_class = [self class];
+  return [self mappedArrayUsingBlock:block queue:nil stride:NSFiltersDefaultStride];
+}
 
-  SPMapArrayUsingBlock(self, block, queue, ^(const unsafe_id *objects, NSUInteger num_objects) {
+- (NSArray *)mappedArrayUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+{
+  __block NSArray *result = nil;
+  NSAssert(stride > 0, @"Stride must be greater than zero.");
+
+  SPMapArrayUsingBlock(self, block, stride, queue, ^(const unsafe_id *objects, NSUInteger num_objects) {
       if (!objects)
         result = [self copy];
       else
-        result = [self_class arrayWithObjects:objects count:num_objects];
+        result = [[self class] arrayWithObjects:objects count:num_objects];
     });
 
   return result;
@@ -380,22 +403,34 @@ sp_set_map_cleanup:
 
 - (NSArray *)rejectedArrayUsingBlock:(SPFilterBlock)block
 {
-  return SPArrayFilteredUsingBlock(self, block, TRUE, nil);
+  return SPArrayFilteredUsingBlock(self, block, TRUE, NSFiltersDefaultStride, nil);
 }
 
 - (NSArray *)selectedArrayUsingBlock:(SPFilterBlock)block
 {
-  return SPArrayFilteredUsingBlock(self, block, FALSE, nil);
+  return SPArrayFilteredUsingBlock(self, block, FALSE, NSFiltersDefaultStride, nil);
 }
 
 - (NSArray *)rejectedArrayUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
 {
-  return SPArrayFilteredUsingBlock(self, block, TRUE, queue);
+  return SPArrayFilteredUsingBlock(self, block, TRUE, NSFiltersDefaultStride, queue);
 }
 
 - (NSArray *)selectedArrayUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
 {
-  return SPArrayFilteredUsingBlock(self, block, FALSE, queue);
+  return SPArrayFilteredUsingBlock(self, block, FALSE, NSFiltersDefaultStride, queue);
+}
+
+- (NSArray *)rejectedArrayUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+{
+  NSAssert(stride > 0, @"Stride must be greater than zero.");
+  return SPArrayFilteredUsingBlock(self, block, TRUE, stride, queue);
+}
+
+- (NSArray *)selectedArrayUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+{
+  NSAssert(stride > 0, @"Stride must be greater than zero.");
+  return SPArrayFilteredUsingBlock(self, block, FALSE, stride, queue);
 }
 
 - (id)reduceWithInitialValue:(id)memo usingBlock:(SPReduceBlock)block
@@ -417,12 +452,18 @@ sp_set_map_cleanup:
 
 - (void)mapUsingBlock:(SPMapBlock)block
 {
-  [self mapUsingBlock:block queue:nil];
+  [self mapUsingBlock:block queue:nil stride:NSFiltersDefaultStride];
 }
 
 - (void)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue
 {
-  SPMapArrayUsingBlock(self, block, queue, ^(const unsafe_id *objects, NSUInteger num_objects) {
+  [self mapUsingBlock:block queue:queue stride:NSFiltersDefaultStride];
+}
+
+- (void)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+{
+  NSAssert(stride > 0, @"Stride must be greater than zero.");
+  SPMapArrayUsingBlock(self, block, stride, queue, ^(const unsafe_id *objects, NSUInteger num_objects) {
       NSUInteger index = 0;
       for (; index < num_objects; ++index)
         [self replaceObjectAtIndex:index withObject:objects[index]];
@@ -431,22 +472,34 @@ sp_set_map_cleanup:
 
 - (void)rejectUsingBlock:(SPFilterBlock)block
 {
-  SPFilterArrayUsingBlock(self, block, TRUE, nil);
+  SPFilterArrayUsingBlock(self, block, TRUE, NSFiltersDefaultStride, nil);
 }
 
 - (void)selectUsingBlock:(SPFilterBlock)block
 {
-  SPFilterArrayUsingBlock(self, block, FALSE, nil);
+  SPFilterArrayUsingBlock(self, block, FALSE, NSFiltersDefaultStride, nil);
 }
 
 - (void)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
 {
-  SPFilterArrayUsingBlock(self, block, TRUE, queue);
+  SPFilterArrayUsingBlock(self, block, TRUE, NSFiltersDefaultStride, queue);
 }
 
 - (void)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
 {
-  SPFilterArrayUsingBlock(self, block, FALSE, queue);
+  SPFilterArrayUsingBlock(self, block, FALSE, NSFiltersDefaultStride, queue);
+}
+
+- (void)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+{
+  NSAssert(stride > 0, @"Stride must be greater than zero.");
+  SPFilterArrayUsingBlock(self, block, TRUE, stride, queue);
+}
+
+- (void)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+{
+  NSAssert(stride > 0, @"Stride must be greater than zero.");
+  SPFilterArrayUsingBlock(self, block, FALSE, stride, queue);
 }
 
 @end
