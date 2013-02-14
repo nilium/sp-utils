@@ -315,7 +315,6 @@ static void SPMapSetUsingBlock(NSSet *set, SPMapBlock block, dispatch_queue_t qu
   const NSUInteger num_objects = [set count];
   unsafe_id *objects;
   NSUInteger index = 0;
-  objects = (unsafe_id *)calloc(num_objects, sizeof(id));
 
   if (num_objects == 0) {
     if (completion)
@@ -323,6 +322,8 @@ static void SPMapSetUsingBlock(NSSet *set, SPMapBlock block, dispatch_queue_t qu
 
     return;
   }
+
+  objects = (unsafe_id *)calloc(num_objects, sizeof(id));
 
   if (!objects) {
     @throw [NSException exceptionWithName:SPNoMemoryException
