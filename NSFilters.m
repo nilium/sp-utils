@@ -475,17 +475,17 @@ sp_set_map_cleanup:
 
 @implementation NSMutableArray (SPMutableArrayFilters)
 
-- (void)mapUsingBlock:(SPMapBlock)block
+- (id)mapUsingBlock:(SPMapBlock)block
 {
-  [self mapUsingBlock:block queue:nil stride:NSFiltersDefaultStride];
+  return [self mapUsingBlock:block queue:nil stride:NSFiltersDefaultStride];
 }
 
-- (void)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue
+- (id)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue
 {
-  [self mapUsingBlock:block queue:queue stride:NSFiltersDefaultStride];
+  return [self mapUsingBlock:block queue:queue stride:NSFiltersDefaultStride];
 }
 
-- (void)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+- (id)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
 {
   NSAssert(stride > 0, @"Stride must be greater than zero.");
   SPMapArrayUsingBlock(self, block, stride, queue, ^(const unsafe_id *objects, NSUInteger num_objects) {
@@ -493,38 +493,45 @@ sp_set_map_cleanup:
       for (; index < num_objects; ++index)
         [self replaceObjectAtIndex:index withObject:objects[index]];
     });
+  return self;
 }
 
-- (void)rejectUsingBlock:(SPFilterBlock)block
+- (id)rejectUsingBlock:(SPFilterBlock)block
 {
   SPFilterArrayUsingBlock(self, block, TRUE, NSFiltersDefaultStride, nil);
+  return self;
 }
 
-- (void)selectUsingBlock:(SPFilterBlock)block
+- (id)selectUsingBlock:(SPFilterBlock)block
 {
   SPFilterArrayUsingBlock(self, block, FALSE, NSFiltersDefaultStride, nil);
+  return self;
 }
 
-- (void)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
+- (id)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
 {
   SPFilterArrayUsingBlock(self, block, TRUE, NSFiltersDefaultStride, queue);
+  return self;
 }
 
-- (void)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
+- (id)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
 {
   SPFilterArrayUsingBlock(self, block, FALSE, NSFiltersDefaultStride, queue);
+  return self;
 }
 
-- (void)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+- (id)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
 {
   NSAssert(stride > 0, @"Stride must be greater than zero.");
   SPFilterArrayUsingBlock(self, block, TRUE, stride, queue);
+  return self;
 }
 
-- (void)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+- (id)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
 {
   NSAssert(stride > 0, @"Stride must be greater than zero.");
   SPFilterArrayUsingBlock(self, block, FALSE, stride, queue);
+  return self;
 }
 
 @end
@@ -558,8 +565,8 @@ sp_set_map_cleanup:
 {
   __block NSSet *result;
   SPFilterSetUsingBlock(self, block, FALSE, stride, queue, ^(const unsafe_id *objects, NSUInteger num_objects) {
-    result = [NSSet setWithObjects:objects count:num_objects];
-  });
+      result = [NSSet setWithObjects:objects count:num_objects];
+    });
   return result;
 }
 
@@ -567,8 +574,8 @@ sp_set_map_cleanup:
 {
   __block NSSet *result;
   SPFilterSetUsingBlock(self, block, TRUE, stride, queue, ^(const unsafe_id *objects, NSUInteger num_objects) {
-    result = [NSSet setWithObjects:objects count:num_objects];
-  });
+      result = [NSSet setWithObjects:objects count:num_objects];
+    });
   return result;
 }
 
@@ -622,7 +629,7 @@ sp_set_map_cleanup:
 
 @implementation NSMutableSet (SPMutableSetFilters)
 
-- (void)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+- (id)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
 {
   SPMapSetUsingBlock(self, block, stride, queue, ^(const unsafe_id *objects, NSUInteger num_objects){
       if (objects) {
@@ -632,54 +639,57 @@ sp_set_map_cleanup:
           [self addObject:objects[index]];
       }
     });
+  return self;
 }
 
-- (void)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+- (id)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
 {
   SPFilterSetUsingBlock(self, block, TRUE, stride, queue, ^(const unsafe_id *objects, NSUInteger num_objects) {
-    NSUInteger index = 0;
-    for (; index < num_objects; ++index)
-      [self removeObject:objects[index]];
-  });
+      NSUInteger index = 0;
+      for (; index < num_objects; ++index)
+        [self removeObject:objects[index]];
+    });
+  return self;
 }
 
-- (void)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
+- (id)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride
 {
   SPFilterSetUsingBlock(self, block, FALSE, stride, queue, ^(const unsafe_id *objects, NSUInteger num_objects) {
-    NSUInteger index = 0;
-    for (; index < num_objects; ++index)
-      [self removeObject:objects[index]];
-  });
+      NSUInteger index = 0;
+      for (; index < num_objects; ++index)
+        [self removeObject:objects[index]];
+    });
+  return self;
 }
 
-- (void)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue
+- (id)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue
 {
-  [self mapUsingBlock:block queue:queue stride:NSFiltersDefaultStride];
+  return [self mapUsingBlock:block queue:queue stride:NSFiltersDefaultStride];
 }
 
-- (void)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
+- (id)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
 {
-  [self rejectUsingBlock:block queue:queue stride:NSFiltersDefaultStride];
+  return [self rejectUsingBlock:block queue:queue stride:NSFiltersDefaultStride];
 }
 
-- (void)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
+- (id)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue
 {
-  [self selectUsingBlock:block queue:queue stride:NSFiltersDefaultStride];
+  return [self selectUsingBlock:block queue:queue stride:NSFiltersDefaultStride];
 }
 
-- (void)mapUsingBlock:(SPMapBlock)block
+- (id)mapUsingBlock:(SPMapBlock)block
 {
-  [self mapUsingBlock:block queue:nil stride:NSFiltersDefaultStride];
+  return [self mapUsingBlock:block queue:nil stride:NSFiltersDefaultStride];
 }
 
-- (void)rejectUsingBlock:(SPFilterBlock)block
+- (id)rejectUsingBlock:(SPFilterBlock)block
 {
-  [self rejectUsingBlock:block queue:nil stride:NSFiltersDefaultStride];
+  return [self rejectUsingBlock:block queue:nil stride:NSFiltersDefaultStride];
 }
 
-- (void)selectUsingBlock:(SPFilterBlock)block
+- (id)selectUsingBlock:(SPFilterBlock)block
 {
-  [self selectUsingBlock:block queue:nil stride:NSFiltersDefaultStride];
+  return [self selectUsingBlock:block queue:nil stride:NSFiltersDefaultStride];
 }
 
 @end
