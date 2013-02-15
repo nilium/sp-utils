@@ -35,13 +35,15 @@ extern const NSUInteger NSFiltersDefaultStride;
 All map/select/reject operations can be performed asynchronously (provided your
 block is fine under those conditions). They will block execution of the calling
 thread until complete - if you want to run them without blocking, use
-dispatch_async to call them.
+dispatch_async to call them, though bear in mind that for mutable containers,
+you should not modify them while the operation is running (this sounds obvious,
+but obvious things often have to be said).
 
-map blocks must return non-nil objects.
+map blocks must return non-nil objects (because you can't store nil in any
+Cocoa containers - if you must, use NSNull).
 
-Async array map/reject/select will allow you to use an arbitrary stride. This
-currently doesn't apply to the NSSet categories. By default, if you exclude the
-stride, it will use the NSFiltersDefaultStride of 256.
+Async map/reject/select will allow you to use an arbitrary stride. By default,
+if you exclude the stride, they will use the NSFiltersDefaultStride of 256.
 */
 
 @interface NSArray (SPImmutableArrayFilters)
@@ -88,17 +90,23 @@ stride, it will use the NSFiltersDefaultStride of 256.
 // map
 - (NSSet *)mappedSetUsingBlock:(SPMapBlock)block;
 - (NSSet *)mappedSetUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue;
+- (NSSet *)mappedSetUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride;
 // reject
 - (NSSet *)rejectedSetUsingBlock:(SPFilterBlock)block;
 - (NSSet *)rejectedSetUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue;
+- (NSSet *)rejectedSetUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride;
 // select
 - (NSSet *)selectedSetUsingBlock:(SPFilterBlock)block;
 - (NSSet *)selectedSetUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue;
+- (NSSet *)selectedSetUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride;
 
 // reduce
 - (id)reduceWithInitialValue:(id)memo usingBlock:(SPReduceBlock)block;
 // reduce (memo is nil)
 - (id)reduceUsingBlock:(SPReduceBlock)block;
+
+// auxiliary getObjects:count: to place set objects in an unretained array
+- (void)getUnsafeObjects:(__unsafe_unretained id *)objects count:(NSUInteger)count;
 
 @end
 
@@ -107,12 +115,15 @@ stride, it will use the NSFiltersDefaultStride of 256.
 // map
 - (void)mapUsingBlock:(SPMapBlock)block;
 - (void)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue;
+- (void)mapUsingBlock:(SPMapBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride;
 // reject
 - (void)rejectUsingBlock:(SPFilterBlock)block;
 - (void)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue;
+- (void)rejectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride;
 // select
 - (void)selectUsingBlock:(SPFilterBlock)block;
 - (void)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue;
+- (void)selectUsingBlock:(SPFilterBlock)block queue:(dispatch_queue_t)queue stride:(NSUInteger)stride;
 
 @end
 
